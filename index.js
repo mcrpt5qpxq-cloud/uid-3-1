@@ -484,7 +484,7 @@ async function checkAndClaimVanity() {
       const retryAfter = (claimData.retry_after || 3) * 1000;
       console.log(`Rate limited, waiting ${retryAfter}ms`);
       await new Promise(r => setTimeout(r, retryAfter));
-      return false;
+      return { success: false, shouldContinue: true };
     }
 
     // Handle MFA requirement - refresh token
@@ -495,30 +495,44 @@ async function checkAndClaimVanity() {
         mfaAuthToken = newToken;
         console.log('MFA token refreshed');
       }
-      return false;
+      return { success: false, shouldContinue: true };
+    }
+
+    // Handle vanity already taken or invalid
+    if (claimData.code === 50020) {
+      console.log(`Vanity "${TARGET_VANITY}" is already taken or invalid. Retrying in 5 seconds...`);
+      return { success: false, shouldContinue: true, slowDown: true };
+    }
+
+    // Handle unknown message errors (likely rate limiting or malformed request)
+    if (claimData.code === 10008) {
+      console.log('Received error 10008, slowing down requests...');
+      return { success: false, shouldContinue: true, slowDown: true };
     }
 
     // Check for success
     if (claimData.code === TARGET_VANITY || claimData.vanity_url_code === TARGET_VANITY || (!claimData.code && !claimData.message)) {
       console.log(`URL claimed: ${TARGET_VANITY}`);
       sendWebhook(TARGET_VANITY);
-      return true;
+      return { success: true, shouldContinue: false };
     }
 
     console.log('Claim response:', JSON.stringify(claimData).substring(0, 150));
   } catch (err) {
     console.error('Claim error:', err.message);
   }
-  return false;
+  return { success: false, shouldContinue: true, slowDown: true };
 }
 
 async function pollTargetVanity() {
   console.log(`Polling for vanity: ${TARGET_VANITY}`);
 
   const poll = async () => {
-    const claimed = await checkAndClaimVanity();
-    if (!claimed) {
-      setTimeout(poll, 100);
+    const result = await checkAndClaimVanity();
+    if (result.shouldContinue) {
+      // Use slower polling (5 seconds) when getting errors, otherwise 100ms
+      const delay = result.slowDown ? 5000 : 100;
+      setTimeout(poll, delay);
     }
   };
 
