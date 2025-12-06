@@ -595,32 +595,63 @@ async function pollTargetVanity() {
     return `${seconds}s`;
   };
 
-  const poll = async () => {
-    const result = await checkAndClaimVanity();
-    if (result.shouldContinue) {
-      let delay;
-      const timeUntilRelease = new Date(RELEASE_DATE).getTime() - Date.now();
+  // Wait until we're close to release time
+  const waitUntilNearRelease = async () => {
+    const now = Date.now();
+    const releaseTimeMs = new Date(RELEASE_DATE).getTime();
+    const timeUntilRelease = releaseTimeMs - now;
+    
+    // Wake up time: 20 seconds before release
+    const WAKE_UP_SECONDS = 20;
+    const wakeUpTime = releaseTimeMs - (WAKE_UP_SECONDS * 1000);
+    const timeUntilWakeUp = wakeUpTime - now;
+    
+    if (timeUntilWakeUp > 0) {
+      console.log(`😴 Sleeping until ${WAKE_UP_SECONDS}s before release...`);
+      console.log(`⏰ Will wake up in: ${formatTimeRemaining(timeUntilWakeUp)}`);
+      console.log(`💤 Bot paused to avoid rate limits. ZzZz...`);
       
-      // If we're getting errors, slow down regardless of schedule
-      if (result.slowDown) {
-        delay = 5000;
-        console.log(`⚠️  Error detected, slowing down (5s delay)`);
-      } else {
-        delay = getPollingDelay();
-        
-        // Log status based on proximity to release
-        if (timeUntilRelease <= HYPER_MODE_SECONDS_BEFORE * 1000 && timeUntilRelease > 0) {
-          console.log(`🚀 HYPER MODE - ${Math.round(timeUntilRelease / 1000)}s until release (${delay}ms intervals)`);
-        } else if (timeUntilRelease > 0) {
-          console.log(`⏰ ${formatTimeRemaining(timeUntilRelease)} until release (next check in ${delay/1000}s)`);
+      // Set a timer to wake up
+      setTimeout(() => {
+        console.log(`🔔 WAKE UP! Starting hyper mode polling now!`);
+        startPolling();
+      }, timeUntilWakeUp);
+      
+      // Log countdown every 10 minutes while sleeping
+      const countdownInterval = setInterval(() => {
+        const remaining = wakeUpTime - Date.now();
+        if (remaining <= 0) {
+          clearInterval(countdownInterval);
+        } else {
+          console.log(`💤 Still sleeping... ${formatTimeRemaining(remaining)} until wake up`);
         }
-      }
+      }, 10 * 60 * 1000); // Every 10 minutes
       
-      setTimeout(poll, delay);
+    } else {
+      // We're already past wake-up time, start polling immediately
+      console.log(`⚡ Already within ${WAKE_UP_SECONDS}s of release! Starting hyper mode now!`);
+      startPolling();
     }
   };
 
-  poll();
+  const startPolling = async () => {
+    const poll = async () => {
+      const result = await checkAndClaimVanity();
+      if (result.shouldContinue) {
+        const delay = 50; // Hyper mode: 50ms (20 requests/second)
+        const timeUntilRelease = new Date(RELEASE_DATE).getTime() - Date.now();
+        
+        if (timeUntilRelease > 0) {
+          console.log(`🚀 HYPER MODE - ${Math.round(timeUntilRelease / 1000)}s until release`);
+        }
+        
+        setTimeout(poll, delay);
+      }
+    };
+    poll();
+  };
+
+  waitUntilNearRelease();
 }
 
 async function main() {
