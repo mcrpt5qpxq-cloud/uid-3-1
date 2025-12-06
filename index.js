@@ -535,31 +535,46 @@ function getPollingDelay() {
   
   // If release time has passed or is within hyper mode window
   if (timeUntilRelease <= HYPER_MODE_SECONDS_BEFORE * 1000) {
-    return 50; // HYPER MODE: 50ms (20 requests/second)
+    return 50; // 🚀 HYPER MODE: 50ms (20 requests/second)
   }
   
-  // More than 10 minutes away: poll every 30 seconds
-  if (timeUntilRelease > 10 * 60 * 1000) {
+  // More than 1 hour away: poll every 5 minutes (very conservative)
+  if (timeUntilRelease > 60 * 60 * 1000) {
+    return 5 * 60 * 1000;
+  }
+  
+  // 30-60 minutes away: poll every 2 minutes
+  if (timeUntilRelease > 30 * 60 * 1000) {
+    return 2 * 60 * 1000;
+  }
+  
+  // 15-30 minutes away: poll every minute
+  if (timeUntilRelease > 15 * 60 * 1000) {
+    return 60 * 1000;
+  }
+  
+  // 5-15 minutes away: poll every 30 seconds
+  if (timeUntilRelease > 5 * 60 * 1000) {
     return 30000;
   }
   
-  // 5-10 minutes away: poll every 10 seconds
-  if (timeUntilRelease > 5 * 60 * 1000) {
+  // 2-5 minutes away: poll every 10 seconds
+  if (timeUntilRelease > 2 * 60 * 1000) {
     return 10000;
   }
   
-  // 2-5 minutes away: poll every 5 seconds
-  if (timeUntilRelease > 2 * 60 * 1000) {
+  // 1-2 minutes away: poll every 5 seconds
+  if (timeUntilRelease > 60 * 1000) {
     return 5000;
   }
   
-  // 1-2 minutes away: poll every 2 seconds
-  if (timeUntilRelease > 60 * 1000) {
+  // 30-60 seconds away: poll every 2 seconds
+  if (timeUntilRelease > 30 * 1000) {
     return 2000;
   }
   
-  // Less than 1 minute: poll every 500ms
-  return 500;
+  // Less than 30 seconds: poll every second (ramping up)
+  return 1000;
 }
 
 async function pollTargetVanity() {
@@ -567,24 +582,37 @@ async function pollTargetVanity() {
   console.log(`Polling for vanity: ${TARGET_VANITY}`);
   console.log(`Release time set to: ${releaseTime.toUTCString()}`);
   console.log(`Hyper mode will activate ${HYPER_MODE_SECONDS_BEFORE} seconds before release`);
+  
+  const formatTimeRemaining = (ms) => {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}d ${hours % 24}h ${minutes % 60}m`;
+    if (hours > 0) return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+    return `${seconds}s`;
+  };
 
   const poll = async () => {
     const result = await checkAndClaimVanity();
     if (result.shouldContinue) {
       let delay;
+      const timeUntilRelease = new Date(RELEASE_DATE).getTime() - Date.now();
       
       // If we're getting errors, slow down regardless of schedule
       if (result.slowDown) {
         delay = 5000;
+        console.log(`⚠️  Error detected, slowing down (5s delay)`);
       } else {
         delay = getPollingDelay();
         
-        // Log when entering hyper mode
-        const timeUntilRelease = new Date(RELEASE_DATE).getTime() - Date.now();
+        // Log status based on proximity to release
         if (timeUntilRelease <= HYPER_MODE_SECONDS_BEFORE * 1000 && timeUntilRelease > 0) {
-          console.log(`🚀 HYPER MODE ACTIVATED - ${Math.round(timeUntilRelease / 1000)}s until release`);
+          console.log(`🚀 HYPER MODE - ${Math.round(timeUntilRelease / 1000)}s until release (${delay}ms intervals)`);
         } else if (timeUntilRelease > 0) {
-          console.log(`⏰ Waiting... ${Math.round(timeUntilRelease / 1000)}s until release (polling every ${delay}ms)`);
+          console.log(`⏰ ${formatTimeRemaining(timeUntilRelease)} until release (next check in ${delay/1000}s)`);
         }
       }
       
