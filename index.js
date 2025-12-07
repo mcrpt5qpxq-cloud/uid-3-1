@@ -103,18 +103,39 @@ async function fetchWebshareProxies() {
   const cleanApiKey = WEBSHARE_API_KEY.replace(/\s+/g, '').replace(/[\r\n]/g, '');
 
   try {
-    const response = await axios.get('https://proxy.webshare.io/api/v2/proxy/list/', {
-      params: {
-        mode: 'direct',
-        page: 1,
-        page_size: 25
-      },
-      headers: {
-        'Authorization': `Token ${cleanApiKey}`
-      }
-    });
+    // First try backbone mode (required for residential proxies)
+    let response;
+    let isBackbone = false;
+    
+    try {
+      response = await axios.get('https://proxy.webshare.io/api/v2/proxy/list/', {
+        params: {
+          mode: 'backbone',
+          page: 1,
+          page_size: 25
+        },
+        headers: {
+          'Authorization': `Token ${cleanApiKey}`
+        }
+      });
+      isBackbone = true;
+    } catch (backboneErr) {
+      // If backbone fails, try direct mode (for datacenter proxies)
+      console.log('Backbone mode failed, trying direct mode...');
+      response = await axios.get('https://proxy.webshare.io/api/v2/proxy/list/', {
+        params: {
+          mode: 'direct',
+          page: 1,
+          page_size: 25
+        },
+        headers: {
+          'Authorization': `Token ${cleanApiKey}`
+        }
+      });
+    }
 
     console.log('Webshare API response count:', response.data.count || 0);
+    console.log('Proxy mode:', isBackbone ? 'Backbone (Residential)' : 'Direct (Datacenter)');
     
     if (response.data.results && response.data.results.length > 0) {
       const proxy = response.data.results[0];
@@ -122,9 +143,20 @@ async function fetchWebshareProxies() {
       // Debug: log the proxy object structure
       console.log('Proxy object keys:', Object.keys(proxy).join(', '));
       
-      // Handle both possible field names (proxy_address or ip)
-      const proxyAddress = proxy.proxy_address || proxy.ip || proxy.host || proxy.address;
-      const proxyPort = proxy.port || proxy.ports?.http || 8080;
+      // For backbone mode, use p.webshare.io as the proxy address
+      // For direct mode, use the proxy_address field
+      let proxyAddress, proxyPort;
+      
+      if (isBackbone) {
+        // Residential proxies use backbone domain
+        proxyAddress = proxy.proxy_address || 'p.webshare.io';
+        proxyPort = proxy.port || proxy.ports?.http || 80;
+      } else {
+        // Datacenter proxies use direct IP
+        proxyAddress = proxy.proxy_address || proxy.ip || proxy.host;
+        proxyPort = proxy.port || 8080;
+      }
+      
       const proxyUsername = proxy.username || proxy.user;
       const proxyPassword = proxy.password || proxy.pass;
       const countryCode = proxy.country_code || proxy.country || 'Unknown';
