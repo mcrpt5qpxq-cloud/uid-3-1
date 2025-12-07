@@ -113,7 +113,8 @@ async function fetchWebshareProxies() {
           mode: 'backbone',
           page: 1,
           page_size: 25,
-          country_code__in: 'US' // Filter for US proxies
+          country_code__in: 'US', // Filter for US proxies
+          state_code__in: 'NY,NJ,VA,NC,GA,FL,PA,MD,MA,CT' // Prioritize eastern US states
         },
         headers: {
           'Authorization': `Token ${cleanApiKey}`
@@ -128,7 +129,8 @@ async function fetchWebshareProxies() {
           mode: 'direct',
           page: 1,
           page_size: 25,
-          country_code__in: 'US' // Filter for US proxies
+          country_code__in: 'US', // Filter for US proxies
+          state_code__in: 'NY,NJ,VA,NC,GA,FL,PA,MD,MA,CT' // Prioritize eastern US states
         },
         headers: {
           'Authorization': `Token ${cleanApiKey}`
