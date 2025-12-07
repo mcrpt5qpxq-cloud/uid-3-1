@@ -23,12 +23,6 @@ const PROXY_ENABLED = process.env.PROXY_ENABLED === 'true';
 const PROXY_URL = (process.env.PROXY_URL || '').trim();
 const WEBSHARE_API_KEY = (process.env.WEBSHARE_API_KEY || '').trim();
 
-// Bright Data configuration (prioritized over Webshare)
-const BRIGHTDATA_CUSTOMER_ID = (process.env.BRIGHTDATA_CUSTOMER_ID || '').trim();
-const BRIGHTDATA_ZONE = (process.env.BRIGHTDATA_ZONE || '').trim();
-const BRIGHTDATA_PASSWORD = (process.env.BRIGHTDATA_PASSWORD || '').trim();
-const BRIGHTDATA_COUNTRY = (process.env.BRIGHTDATA_COUNTRY || 'us').trim().toLowerCase();
-
 let mfaAuthToken = null;
 let userTokens = [];
 let currentTokenIndex = 0;
@@ -47,7 +41,6 @@ let currentProxyInfo = {
 // Cached proxy URL to avoid re-fetching on every request
 let cachedProxyUrl = null;
 let proxyUrlFetched = false;
-let brightDataFailed = false; // Track if Bright Data failed so we can fallback
 
 // Throughput tracking
 const metrics = {
@@ -104,115 +97,6 @@ function getThroughputStats() {
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const X_SUPER_PROPERTIES = 'eyJvcyI6IldpbmRvd3MiLCJicm93c2VyIjoiQ2hyb21lIiwiZGV2aWNlIjoiIiwic3lzdGVtX2xvY2FsZSI6ImVuLVVTIiwiYnJvd3Nlcl91c2VyX2FnZW50IjoiTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzEzMS4wLjAuMCBTYWZhcmkvNTM3LjM2IiwiYnJvd3Nlcl92ZXJzaW9uIjoiMTMxLjAuMC4wIiwib3NfdmVyc2lvbiI6IjEwIiwicmVmZXJyZXIiOiJodHRwczovL3d3dy5nb29nbGUuY29tLyIsInJlZmVycmluZ19kb21haW4iOiJ3d3cuZ29vZ2xlLmNvbSIsInJlZmVycmVyX2N1cnJlbnQiOiIiLCJyZWZlcnJpbmdfZG9tYWluX2N1cnJlbnQiOiIiLCJyZWxlYXNlX2NoYW5uZWwiOiJzdGFibGUiLCJjbGllbnRfYnVpbGRfbnVtYmVyIjozNTgyOTUsImNsaWVudF9ldmVudF9zb3VyY2UiOm51bGwsImRlc2lnbl9pZCI6MH0=';
-
-async function fetchBrightDataProxy() {
-  if (!BRIGHTDATA_CUSTOMER_ID || !BRIGHTDATA_ZONE || !BRIGHTDATA_PASSWORD) {
-    console.log('Bright Data credentials not fully configured');
-    return null;
-  }
-
-  try {
-    // Bright Data residential proxy format
-    // Username can include targeting parameters like country
-    const username = `lum-customer-${BRIGHTDATA_CUSTOMER_ID}-zone-${BRIGHTDATA_ZONE}-country-${BRIGHTDATA_COUNTRY}`;
-    const host = 'zproxy.lum-superproxy.io';
-    const port = 22225;
-
-    const proxyUrl = `http://${username}:${BRIGHTDATA_PASSWORD}@${host}:${port}`;
-    
-    console.log(`Bright Data proxy configured: ${host}:${port} (${BRIGHTDATA_COUNTRY.toUpperCase()})`);
-    
-    // Store proxy info for webhook display
-    currentProxyInfo = {
-      address: host,
-      port: port,
-      country: `${BRIGHTDATA_COUNTRY.toUpperCase()} (Bright Data)`
-    };
-
-    // Test the proxy connection
-    try {
-      const testResponse = await axios.get('http://lumtest.com/myip.json', {
-        proxy: {
-          host: host,
-          port: port,
-          auth: {
-            username: username,
-            password: BRIGHTDATA_PASSWORD
-          }
-        },
-        timeout: 10000
-      });
-      
-      const ipInfo = testResponse.data;
-      console.log(`Bright Data proxy verified - IP: ${ipInfo.ip}, Country: ${ipInfo.country}`);
-      
-      currentProxyInfo.country = `${ipInfo.country || BRIGHTDATA_COUNTRY.toUpperCase()} (Bright Data)`;
-      
-      sendStatusWebhook(
-        '🌐 Bright Data Proxy Connected',
-        '**Successfully connected through Bright Data residential proxy**\nPriority proxy active - all requests routed through premium residential IPs.',
-        0xe91e63,
-        [
-          {
-            name: '📡 Proxy Server',
-            value: `\`\`\`${host}:${port}\`\`\``,
-            inline: true
-          },
-          {
-            name: '🌍 Location',
-            value: `\`${ipInfo.country || BRIGHTDATA_COUNTRY.toUpperCase()}\``,
-            inline: true
-          },
-          {
-            name: '🏠 IP Address',
-            value: `\`${ipInfo.ip}\``,
-            inline: true
-          },
-          {
-            name: '⚡ Provider',
-            value: '`Bright Data (Premium Residential)`',
-            inline: false
-          },
-          {
-            name: '✅ Status',
-            value: '`Verified & Active`',
-            inline: false
-          }
-        ]
-      );
-    } catch (testErr) {
-      console.log('Bright Data proxy test skipped (using without verification):', testErr.message);
-      
-      sendStatusWebhook(
-        '🌐 Bright Data Proxy Configured',
-        '**Bright Data residential proxy configured**\nProxy active but verification skipped.',
-        0xe91e63,
-        [
-          {
-            name: '📡 Proxy Server',
-            value: `\`\`\`${host}:${port}\`\`\``,
-            inline: true
-          },
-          {
-            name: '🌍 Target Country',
-            value: `\`${BRIGHTDATA_COUNTRY.toUpperCase()}\``,
-            inline: true
-          },
-          {
-            name: '⚡ Provider',
-            value: '`Bright Data (Premium Residential)`',
-            inline: false
-          }
-        ]
-      );
-    }
-
-    return proxyUrl;
-  } catch (err) {
-    console.error('Failed to configure Bright Data proxy:', err.message);
-    return null;
-  }
-}
 
 async function fetchWebshareProxies() {
   if (!WEBSHARE_API_KEY) {
@@ -352,7 +236,7 @@ async function getProxyUrl() {
       currentProxyInfo = {
         address: parsed.hostname,
         port: parseInt(parsed.port) || 80,
-        country: 'Manual Proxy' // Can't determine country for manual proxies
+        country: 'Manual Proxy'
       };
       console.log(`Using manual proxy: ${currentProxyInfo.address}:${currentProxyInfo.port}`);
     } catch (e) {
@@ -361,15 +245,7 @@ async function getProxyUrl() {
     return PROXY_URL;
   }
   
-  // Priority 1: Bright Data (premium residential proxies)
-  const brightDataProxy = await fetchBrightDataProxy();
-  if (brightDataProxy) {
-    console.log('Using Bright Data as priority proxy');
-    return brightDataProxy;
-  }
-  
-  // Priority 2: Webshare (fallback)
-  console.log('Bright Data not available, trying Webshare...');
+  // Use Webshare proxy
   return await fetchWebshareProxies();
 }
 
@@ -382,78 +258,11 @@ function parseProxyUrl(proxyUrl) {
   };
 }
 
-function isBrightDataProxy(proxyUrl) {
-  return proxyUrl && proxyUrl.includes('lum-superproxy.io');
-}
-
 function createTlsSocketThroughProxy(proxyUrl) {
   return new Promise((resolve, reject) => {
     const proxy = parseProxyUrl(proxyUrl);
     const targetHost = 'canary.discord.com';
     const targetPort = 443;
-
-    // For Bright Data, use their super proxy with proper TLS settings
-    if (isBrightDataProxy(proxyUrl)) {
-      const socket = net.connect(proxy.port, proxy.host, () => {
-        let connectRequest = `CONNECT ${targetHost}:${targetPort} HTTP/1.1\r\n`;
-        connectRequest += `Host: ${targetHost}:${targetPort}\r\n`;
-        connectRequest += `User-Agent: ${USER_AGENT}\r\n`;
-
-        if (proxy.auth) {
-          const authBase64 = Buffer.from(proxy.auth).toString('base64');
-          connectRequest += `Proxy-Authorization: Basic ${authBase64}\r\n`;
-        }
-
-        connectRequest += '\r\n';
-        socket.write(connectRequest);
-      });
-
-      let responseBuffer = '';
-      
-      socket.on('data', (data) => {
-        responseBuffer += data.toString();
-        
-        // Check if we have complete headers
-        if (responseBuffer.includes('\r\n\r\n')) {
-          const statusLine = responseBuffer.split('\r\n')[0];
-          
-          if (statusLine.includes('200')) {
-            // Bright Data requires specific TLS settings
-            const tlsSock = tls.connect({
-              socket: socket,
-              host: targetHost,
-              servername: targetHost,
-              rejectUnauthorized: false,
-              minVersion: 'TLSv1.2',
-              ciphers: 'HIGH:!aNULL:!MD5:!RC4'
-            }, () => {
-              resolve(tlsSock);
-            });
-
-            tlsSock.on('error', (err) => {
-              console.error('Bright Data TLS error:', err.message);
-              reject(err);
-            });
-          } else {
-            reject(new Error(`Bright Data CONNECT failed: ${statusLine}`));
-          }
-        }
-      });
-
-      socket.on('error', (err) => {
-        console.error('Bright Data socket error:', err.message);
-        reject(err);
-      });
-      
-      socket.setTimeout(15000, () => {
-        socket.destroy();
-        reject(new Error('Bright Data connection timeout'));
-      });
-      
-      return;
-    }
-
-    // Standard proxy handling for non-Bright Data proxies
     const socket = net.connect(proxy.port, proxy.host, () => {
       let connectRequest = `CONNECT ${targetHost}:${targetPort} HTTP/1.1\r\n`;
       connectRequest += `Host: ${targetHost}:${targetPort}\r\n`;
@@ -808,17 +617,6 @@ async function authenticateMfa() {
       // Debug: Check if response is HTML (error page)
       if (patchResp.startsWith('<') || patchResp.startsWith('<!')) {
         console.error('ERROR: Received HTML instead of JSON. First 200 chars:', patchResp.substring(0, 200));
-        
-        // Check for Bright Data KYC/endpoint restriction
-        if (patchResp.includes('bad_endpoint') || patchResp.includes('Residential Failed')) {
-          console.error('Bright Data blocked this site (requires KYC verification)');
-          console.log('Falling back to Webshare proxy...');
-          brightDataFailed = true;
-          proxyUrlFetched = false; // Reset to refetch with Webshare
-          cachedProxyUrl = null;
-          await new Promise(r => setTimeout(r, 1000));
-          continue;
-        }
         
         console.error('This may indicate proxy blocking or Discord returning an error page');
         await new Promise(r => setTimeout(r, 3000));
