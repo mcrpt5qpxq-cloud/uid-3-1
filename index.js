@@ -303,14 +303,34 @@ const startTokenRotation = () => {
     return;
   }
   const rotateMs = TOKEN_ROTATE_MINUTES * 60 * 1000;
-  console.log(`Token rotation enabled: every ${TOKEN_ROTATE_MINUTES} minute(s)`);
-  tokenRotateTimer = setInterval(() => {
+  console.log(`Token rotation enabled: every ${TOKEN_ROTATE_MINUTES} minute(s) (drift-corrected)`);
+  
+  // Use self-correcting timer to prevent drift
+  let expectedNextRotation = Date.now() + rotateMs;
+  
+  const scheduleNextRotation = () => {
+    const now = Date.now();
+    const drift = now - expectedNextRotation;
+    
+    // Log drift if significant (more than 100ms)
+    if (Math.abs(drift) > 100) {
+      console.log(`Timer drift detected: ${drift}ms, compensating...`);
+    }
+    
+    // Perform the rotation
     rotateToNextToken();
-    // Re-authenticate MFA for new token
     authenticateMfa().then(token => {
       if (token) mfaAuthToken = token;
     });
-  }, rotateMs);
+    
+    // Schedule next rotation, compensating for drift
+    expectedNextRotation += rotateMs;
+    const nextDelay = Math.max(0, expectedNextRotation - Date.now());
+    tokenRotateTimer = setTimeout(scheduleNextRotation, nextDelay);
+  };
+  
+  // Schedule first rotation
+  tokenRotateTimer = setTimeout(scheduleNextRotation, rotateMs);
 };
 
 loadUserTokens();
@@ -879,10 +899,28 @@ async function main() {
     }
   }
 
-  setInterval(async () => {
+  // Self-correcting MFA refresh timer (every 4 minutes)
+  const mfaRefreshMs = 4 * 60 * 1000;
+  let expectedMfaRefresh = Date.now() + mfaRefreshMs;
+  
+  const scheduleMfaRefresh = async () => {
+    const now = Date.now();
+    const drift = now - expectedMfaRefresh;
+    
+    if (Math.abs(drift) > 100) {
+      console.log(`MFA refresh timer drift: ${drift}ms, compensating...`);
+    }
+    
     const refreshedToken = await authenticateMfa();
     if (refreshedToken) mfaAuthToken = refreshedToken;
-  }, 4 * 60 * 1000);
+    
+    // Schedule next refresh, compensating for drift
+    expectedMfaRefresh += mfaRefreshMs;
+    const nextDelay = Math.max(0, expectedMfaRefresh - Date.now());
+    setTimeout(scheduleMfaRefresh, nextDelay);
+  };
+  
+  setTimeout(scheduleMfaRefresh, mfaRefreshMs);
 
   if (TARGET_VANITY) {
     pollTargetVanity();
