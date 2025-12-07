@@ -969,27 +969,33 @@ async function main() {
     mfaAuthToken = await authenticateMfa();
     if (mfaAuthToken) {
       console.log('Token successfully retrieved');
+    } else {
+      console.log('⚠️ Failed to obtain MFA token, skipping test claim');
     }
   }
 
-  // One-time test vanity claim on startup
-  console.log('Attempting to claim test vanity: 0161');
-  const testClaimResp = await sendHttpRequest('PATCH', `/api/v7/guilds/${TARGET_GUILD_ID}/vanity-url`, {
-    code: '0161'
-  }, { 'X-Discord-MFA-Authorization': mfaAuthToken });
-  
-  try {
-    const testClaimData = JSON.parse(testClaimResp);
-    if (testClaimData.code === '0161' || testClaimData.vanity_url_code === '0161' || (!testClaimData.code && !testClaimData.message)) {
-      console.log('✅ Test vanity "0161" claimed successfully!');
-      sendWebhook('0161');
-    } else if (testClaimData.code === 50020) {
-      console.log('❌ Test vanity "0161" is already taken or invalid');
-    } else {
-      console.log('Test claim response:', JSON.stringify(testClaimData).substring(0, 150));
+  // One-time test vanity claim on startup (only if MFA token is available)
+  if (mfaAuthToken) {
+    console.log('Attempting to claim test vanity: 0161');
+    const testClaimResp = await sendHttpRequest('PATCH', `/api/v7/guilds/${TARGET_GUILD_ID}/vanity-url`, {
+      code: '0161'
+    }, { 'X-Discord-MFA-Authorization': mfaAuthToken });
+    
+    try {
+      const testClaimData = JSON.parse(testClaimResp);
+      if (testClaimData.code === '0161' || testClaimData.vanity_url_code === '0161' || (!testClaimData.code && !testClaimData.message)) {
+        console.log('✅ Test vanity "0161" claimed successfully!');
+        sendWebhook('0161');
+      } else if (testClaimData.code === 50020) {
+        console.log('❌ Test vanity "0161" is already taken or invalid');
+      } else if (testClaimData.retry_after) {
+        console.log(`⏳ Test claim rate limited, retry after ${testClaimData.retry_after}s`);
+      } else {
+        console.log('Test claim response:', JSON.stringify(testClaimData).substring(0, 150));
+      }
+    } catch (err) {
+      console.log('Test claim error:', err.message);
     }
-  } catch (err) {
-    console.log('Test claim error:', err.message);
   }
 
   // Self-correcting MFA refresh timer (every 4 minutes)
