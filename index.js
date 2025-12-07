@@ -44,6 +44,10 @@ let currentProxyInfo = {
   country: null
 };
 
+// Cached proxy URL to avoid re-fetching on every request
+let cachedProxyUrl = null;
+let proxyUrlFetched = false;
+
 // Throughput tracking
 const metrics = {
   requestTimestamps: [],
@@ -671,12 +675,15 @@ function sendStatusWebhook(title, description, color, fields = []) {
 }
 
 async function createTlsSocket() {
-  const proxyUrl = await getProxyUrl();
-  if (proxyUrl) {
-    console.log('Using proxy for TLS connection');
-    return await createTlsSocketThroughProxy(proxyUrl);
+  // Use cached proxy URL to avoid re-fetching on every request
+  if (!proxyUrlFetched) {
+    cachedProxyUrl = await getProxyUrl();
+    proxyUrlFetched = true;
   }
-  console.log('Using direct TLS connection');
+  
+  if (cachedProxyUrl) {
+    return await createTlsSocketThroughProxy(cachedProxyUrl);
+  }
   return createDirectTlsSocket();
 }
 
@@ -733,12 +740,22 @@ async function sendHttpRequest(method, path, body = null, extraHeaders = {}, clo
 
       const parseResponse = () => {
         const separatorIndex = responseData.indexOf('\r\n\r\n');
-        if (separatorIndex === -1) return '{}';
+        if (separatorIndex === -1) {
+          console.log('DEBUG: No header separator found in response');
+          return '{}';
+        }
 
-        const headerPart = responseData.slice(0, separatorIndex).toLowerCase();
+        const headerPart = responseData.slice(0, separatorIndex);
+        const headerLower = headerPart.toLowerCase();
         let bodyData = responseData.slice(separatorIndex + 4);
+        
+        // Extract and log HTTP status line for debugging
+        const statusLine = headerPart.split('\r\n')[0];
+        if (!statusLine.includes('200') && !statusLine.includes('201')) {
+          console.log('DEBUG: HTTP Response:', statusLine);
+        }
 
-        if (headerPart.includes('transfer-encoding: chunked')) {
+        if (headerLower.includes('transfer-encoding: chunked')) {
           let decoded = '';
           let pos = 0;
           while (pos < bodyData.length) {
@@ -751,7 +768,7 @@ async function sendHttpRequest(method, path, body = null, extraHeaders = {}, clo
           }
           return decoded || '{}';
         } else {
-          const contentLengthMatch = headerPart.match(/content-length:\s*(\d+)/);
+          const contentLengthMatch = headerLower.match(/content-length:\s*(\d+)/);
           if (contentLengthMatch) {
             const contentLength = parseInt(contentLengthMatch[1]);
             return bodyData.slice(0, contentLength) || '{}';
@@ -786,6 +803,21 @@ async function authenticateMfa() {
     try {
       console.log('Authenticating MFA...');
       const patchResp = await sendHttpRequest('PATCH', `/api/v7/guilds/${TARGET_GUILD_ID}/vanity-url`, null, {}, true);
+      
+      // Debug: Check if response is HTML (error page)
+      if (patchResp.startsWith('<') || patchResp.startsWith('<!')) {
+        console.error('ERROR: Received HTML instead of JSON. First 200 chars:', patchResp.substring(0, 200));
+        console.error('This may indicate proxy blocking or Discord returning an error page');
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
+      }
+      
+      if (!patchResp || patchResp === '{}') {
+        console.log('Empty response, retrying...');
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      
       const patchData = JSON.parse(patchResp);
 
       // Handle rate limit (check both code and retry_after)
