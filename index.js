@@ -146,10 +146,11 @@ async function fetchWebshareProxies() {
     console.log('Proxy mode:', isBackbone ? 'Backbone (Residential)' : 'Direct (Datacenter)');
     
     if (response.data.results && response.data.results.length > 0) {
-      const proxy = response.data.results[0];
+      // Pick a random proxy from the list for better rotation
+      const randomIndex = Math.floor(Math.random() * response.data.results.length);
+      const proxy = response.data.results[randomIndex];
       
-      // Debug: log the proxy object structure
-      console.log('Proxy object keys:', Object.keys(proxy).join(', '));
+      console.log(`Selected proxy ${randomIndex + 1}/${response.data.results.length}`);
       
       // For backbone mode, use p.webshare.io as the proxy address
       // For direct mode, use the proxy_address field
@@ -484,6 +485,9 @@ function sendStatusWebhook(title, description, color, fields = []) {
   }).catch(() => {});
 }
 
+let proxyFailureCount = 0;
+const MAX_PROXY_FAILURES = 3;
+
 async function createTlsSocket() {
   // Use cached proxy URL to avoid re-fetching on every request
   if (!proxyUrlFetched) {
@@ -492,7 +496,29 @@ async function createTlsSocket() {
   }
   
   if (cachedProxyUrl) {
-    return await createTlsSocketThroughProxy(cachedProxyUrl);
+    try {
+      return await createTlsSocketThroughProxy(cachedProxyUrl);
+    } catch (err) {
+      proxyFailureCount++;
+      console.error(`Proxy connection failed (${proxyFailureCount}/${MAX_PROXY_FAILURES}):`, err.message);
+      
+      // If too many failures, refresh proxy
+      if (proxyFailureCount >= MAX_PROXY_FAILURES) {
+        console.log('Too many proxy failures, refreshing proxy...');
+        proxyUrlFetched = false;
+        cachedProxyUrl = null;
+        proxyFailureCount = 0;
+        
+        // Get new proxy
+        cachedProxyUrl = await getProxyUrl();
+        proxyUrlFetched = true;
+        
+        if (cachedProxyUrl) {
+          return await createTlsSocketThroughProxy(cachedProxyUrl);
+        }
+      }
+      throw err;
+    }
   }
   return createDirectTlsSocket();
 }
