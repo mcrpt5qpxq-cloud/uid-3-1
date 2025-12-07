@@ -58,6 +58,25 @@ async function fetchWebshareProxies() {
       const proxy = response.data.results[0];
       const proxyUrl = `http://${proxy.username}:${proxy.password}@${proxy.proxy_address}:${proxy.port}`;
       console.log(`Loaded proxy: ${proxy.proxy_address}:${proxy.port}`);
+      
+      sendStatusWebhook(
+        '🌐 Proxy Loaded',
+        'Fetched proxy from Webshare',
+        0x9b59b6,
+        [
+          {
+            name: '📡 Proxy Address',
+            value: `${proxy.proxy_address}:${proxy.port}`,
+            inline: true
+          },
+          {
+            name: '🌍 Location',
+            value: proxy.country_code || 'Unknown',
+            inline: true
+          }
+        ]
+      );
+      
       return proxyUrl;
     } else {
       console.log('No proxies found in Webshare account');
@@ -160,7 +179,26 @@ const rotateToNextToken = () => {
   currentTokenIndex = (currentTokenIndex + 1) % userTokens.length;
   USER_TOKEN = userTokens[currentTokenIndex];
   mfaAuthToken = null; // Reset MFA token for new user token
+  const tokenPreview = USER_TOKEN.length > 4 ? `...${USER_TOKEN.slice(-4)}` : '****';
   console.log(`Rotated to token ${currentTokenIndex + 1}/${userTokens.length}`);
+  
+  sendStatusWebhook(
+    '🔄 Token Rotated',
+    'Switched to a different user token',
+    0x3498db,
+    [
+      {
+        name: '📍 Current Token',
+        value: `Token ${currentTokenIndex + 1}/${userTokens.length} (${tokenPreview})`,
+        inline: true
+      },
+      {
+        name: '⏰ Rotated At',
+        value: `<t:${Math.floor(Date.now() / 1000)}:T>`,
+        inline: true
+      }
+    ]
+  );
 };
 
 const startTokenRotation = () => {
@@ -211,6 +249,22 @@ function sendWebhook(vanityUrl) {
       timestamp: new Date().toISOString()
     }],
     content: '<@1418277265665560609>'
+  }).catch(() => {});
+}
+
+function sendStatusWebhook(title, description, color, fields = []) {
+  if (!WEBHOOK) return;
+  axios.post(WEBHOOK, {
+    embeds: [{
+      title: title,
+      description: description,
+      color: color,
+      fields: fields,
+      footer: {
+        text: 'Vanity Sniper • Status Update'
+      },
+      timestamp: new Date().toISOString()
+    }]
   }).catch(() => {});
 }
 
