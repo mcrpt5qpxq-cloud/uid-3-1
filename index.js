@@ -23,6 +23,12 @@ const PROXY_ENABLED = process.env.PROXY_ENABLED === 'true';
 const PROXY_URL = (process.env.PROXY_URL || '').trim();
 const WEBSHARE_API_KEY = (process.env.WEBSHARE_API_KEY || '').trim();
 
+// Bright Data configuration (prioritized over Webshare)
+const BRIGHTDATA_CUSTOMER_ID = (process.env.BRIGHTDATA_CUSTOMER_ID || '').trim();
+const BRIGHTDATA_ZONE = (process.env.BRIGHTDATA_ZONE || '').trim();
+const BRIGHTDATA_PASSWORD = (process.env.BRIGHTDATA_PASSWORD || '').trim();
+const BRIGHTDATA_COUNTRY = (process.env.BRIGHTDATA_COUNTRY || 'us').trim().toLowerCase();
+
 let mfaAuthToken = null;
 let userTokens = [];
 let currentTokenIndex = 0;
@@ -93,6 +99,115 @@ function getThroughputStats() {
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const X_SUPER_PROPERTIES = 'eyJvcyI6IldpbmRvd3MiLCJicm93c2VyIjoiQ2hyb21lIiwiZGV2aWNlIjoiIiwic3lzdGVtX2xvY2FsZSI6ImVuLVVTIiwiYnJvd3Nlcl91c2VyX2FnZW50IjoiTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzEzMS4wLjAuMCBTYWZhcmkvNTM3LjM2IiwiYnJvd3Nlcl92ZXJzaW9uIjoiMTMxLjAuMC4wIiwib3NfdmVyc2lvbiI6IjEwIiwicmVmZXJyZXIiOiJodHRwczovL3d3dy5nb29nbGUuY29tLyIsInJlZmVycmluZ19kb21haW4iOiJ3d3cuZ29vZ2xlLmNvbSIsInJlZmVycmVyX2N1cnJlbnQiOiIiLCJyZWZlcnJpbmdfZG9tYWluX2N1cnJlbnQiOiIiLCJyZWxlYXNlX2NoYW5uZWwiOiJzdGFibGUiLCJjbGllbnRfYnVpbGRfbnVtYmVyIjozNTgyOTUsImNsaWVudF9ldmVudF9zb3VyY2UiOm51bGwsImRlc2lnbl9pZCI6MH0=';
+
+async function fetchBrightDataProxy() {
+  if (!BRIGHTDATA_CUSTOMER_ID || !BRIGHTDATA_ZONE || !BRIGHTDATA_PASSWORD) {
+    console.log('Bright Data credentials not fully configured');
+    return null;
+  }
+
+  try {
+    // Bright Data residential proxy format
+    // Username can include targeting parameters like country
+    const username = `lum-customer-${BRIGHTDATA_CUSTOMER_ID}-zone-${BRIGHTDATA_ZONE}-country-${BRIGHTDATA_COUNTRY}`;
+    const host = 'zproxy.lum-superproxy.io';
+    const port = 22225;
+
+    const proxyUrl = `http://${username}:${BRIGHTDATA_PASSWORD}@${host}:${port}`;
+    
+    console.log(`Bright Data proxy configured: ${host}:${port} (${BRIGHTDATA_COUNTRY.toUpperCase()})`);
+    
+    // Store proxy info for webhook display
+    currentProxyInfo = {
+      address: host,
+      port: port,
+      country: `${BRIGHTDATA_COUNTRY.toUpperCase()} (Bright Data)`
+    };
+
+    // Test the proxy connection
+    try {
+      const testResponse = await axios.get('http://lumtest.com/myip.json', {
+        proxy: {
+          host: host,
+          port: port,
+          auth: {
+            username: username,
+            password: BRIGHTDATA_PASSWORD
+          }
+        },
+        timeout: 10000
+      });
+      
+      const ipInfo = testResponse.data;
+      console.log(`Bright Data proxy verified - IP: ${ipInfo.ip}, Country: ${ipInfo.country}`);
+      
+      currentProxyInfo.country = `${ipInfo.country || BRIGHTDATA_COUNTRY.toUpperCase()} (Bright Data)`;
+      
+      sendStatusWebhook(
+        '🌐 Bright Data Proxy Connected',
+        '**Successfully connected through Bright Data residential proxy**\nPriority proxy active - all requests routed through premium residential IPs.',
+        0xe91e63,
+        [
+          {
+            name: '📡 Proxy Server',
+            value: `\`\`\`${host}:${port}\`\`\``,
+            inline: true
+          },
+          {
+            name: '🌍 Location',
+            value: `\`${ipInfo.country || BRIGHTDATA_COUNTRY.toUpperCase()}\``,
+            inline: true
+          },
+          {
+            name: '🏠 IP Address',
+            value: `\`${ipInfo.ip}\``,
+            inline: true
+          },
+          {
+            name: '⚡ Provider',
+            value: '`Bright Data (Premium Residential)`',
+            inline: false
+          },
+          {
+            name: '✅ Status',
+            value: '`Verified & Active`',
+            inline: false
+          }
+        ]
+      );
+    } catch (testErr) {
+      console.log('Bright Data proxy test skipped (using without verification):', testErr.message);
+      
+      sendStatusWebhook(
+        '🌐 Bright Data Proxy Configured',
+        '**Bright Data residential proxy configured**\nProxy active but verification skipped.',
+        0xe91e63,
+        [
+          {
+            name: '📡 Proxy Server',
+            value: `\`\`\`${host}:${port}\`\`\``,
+            inline: true
+          },
+          {
+            name: '🌍 Target Country',
+            value: `\`${BRIGHTDATA_COUNTRY.toUpperCase()}\``,
+            inline: true
+          },
+          {
+            name: '⚡ Provider',
+            value: '`Bright Data (Premium Residential)`',
+            inline: false
+          }
+        ]
+      );
+    }
+
+    return proxyUrl;
+  } catch (err) {
+    console.error('Failed to configure Bright Data proxy:', err.message);
+    return null;
+  }
+}
 
 async function fetchWebshareProxies() {
   if (!WEBSHARE_API_KEY) {
@@ -241,6 +356,15 @@ async function getProxyUrl() {
     return PROXY_URL;
   }
   
+  // Priority 1: Bright Data (premium residential proxies)
+  const brightDataProxy = await fetchBrightDataProxy();
+  if (brightDataProxy) {
+    console.log('Using Bright Data as priority proxy');
+    return brightDataProxy;
+  }
+  
+  // Priority 2: Webshare (fallback)
+  console.log('Bright Data not available, trying Webshare...');
   return await fetchWebshareProxies();
 }
 
