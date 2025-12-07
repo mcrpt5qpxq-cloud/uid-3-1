@@ -601,8 +601,8 @@ async function pollTargetVanity() {
     const releaseTimeMs = new Date(RELEASE_DATE).getTime();
     const timeUntilRelease = releaseTimeMs - now;
     
-    // Wake up time: 20 seconds before release
-    const WAKE_UP_SECONDS = 20;
+    // Wake up time: 90 seconds before release for competitive edge
+    const WAKE_UP_SECONDS = 90;
     const wakeUpTime = releaseTimeMs - (WAKE_UP_SECONDS * 1000);
     const timeUntilWakeUp = wakeUpTime - now;
     
@@ -613,7 +613,7 @@ async function pollTargetVanity() {
       
       // Set a timer to wake up
       setTimeout(() => {
-        console.log(`🔔 WAKE UP! Starting hyper mode polling now!`);
+        console.log(`🔔 WAKE UP! Starting aggressive polling now!`);
         startPolling();
       }, timeUntilWakeUp);
       
@@ -629,7 +629,7 @@ async function pollTargetVanity() {
       
     } else {
       // We're already past wake-up time, start polling immediately
-      console.log(`⚡ Already within ${WAKE_UP_SECONDS}s of release! Starting hyper mode now!`);
+      console.log(`⚡ Already within ${WAKE_UP_SECONDS}s of release! Starting aggressive polling now!`);
       startPolling();
     }
   };
@@ -638,11 +638,26 @@ async function pollTargetVanity() {
     const poll = async () => {
       const result = await checkAndClaimVanity();
       if (result.shouldContinue) {
-        const delay = 50; // Hyper mode: 50ms (20 requests/second)
-        const timeUntilRelease = new Date(RELEASE_DATE).getTime() - Date.now();
+        const releaseTimeMs = new Date(RELEASE_DATE).getTime();
+        const timeUntilRelease = releaseTimeMs - Date.now();
         
-        if (timeUntilRelease > 0) {
+        let delay;
+        if (timeUntilRelease <= 10000) {
+          // Final 10 seconds: MAXIMUM SPEED (25ms = 40 req/sec)
+          delay = 25;
+          console.log(`🔥 MAXIMUM ATTACK - ${Math.round(timeUntilRelease / 1000)}s left!`);
+        } else if (timeUntilRelease <= 30000) {
+          // 10-30 seconds: Hyper mode (50ms = 20 req/sec)
+          delay = 50;
           console.log(`🚀 HYPER MODE - ${Math.round(timeUntilRelease / 1000)}s until release`);
+        } else if (timeUntilRelease <= 60000) {
+          // 30-60 seconds: Fast polling (200ms = 5 req/sec)
+          delay = 200;
+          console.log(`⚡ FAST MODE - ${Math.round(timeUntilRelease / 1000)}s until release`);
+        } else {
+          // 60-90 seconds: Warm-up mode (500ms = 2 req/sec)
+          delay = 500;
+          console.log(`🔄 WARM-UP - ${Math.round(timeUntilRelease / 1000)}s until release`);
         }
         
         setTimeout(poll, delay);
