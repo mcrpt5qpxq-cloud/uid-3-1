@@ -112,7 +112,8 @@ async function fetchWebshareProxies() {
         params: {
           mode: 'backbone',
           page: 1,
-          page_size: 25
+          page_size: 25,
+          country_code__in: 'US' // Filter for US proxies
         },
         headers: {
           'Authorization': `Token ${cleanApiKey}`
@@ -126,7 +127,8 @@ async function fetchWebshareProxies() {
         params: {
           mode: 'direct',
           page: 1,
-          page_size: 25
+          page_size: 25,
+          country_code__in: 'US' // Filter for US proxies
         },
         headers: {
           'Authorization': `Token ${cleanApiKey}`
