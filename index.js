@@ -31,6 +31,59 @@ let heartbeatTimer = null;
 let tokenRotateTimer = null;
 const vanityMap = new Map();
 
+// Throughput tracking
+const metrics = {
+  requestTimestamps: [],
+  totalRequests: 0,
+  sessionStartTime: Date.now(),
+  peakRps: 0,
+  lastRpsUpdate: 0
+};
+
+function recordRequest() {
+  const now = Date.now();
+  metrics.requestTimestamps.push(now);
+  metrics.totalRequests++;
+  
+  // Keep only timestamps from the last 5 seconds for rolling window
+  const cutoff = now - 5000;
+  metrics.requestTimestamps = metrics.requestTimestamps.filter(ts => ts > cutoff);
+}
+
+function getCurrentRps() {
+  const now = Date.now();
+  const oneSecondAgo = now - 1000;
+  const requestsLastSecond = metrics.requestTimestamps.filter(ts => ts > oneSecondAgo).length;
+  
+  // Update peak RPS
+  if (requestsLastSecond > metrics.peakRps) {
+    metrics.peakRps = requestsLastSecond;
+  }
+  
+  return requestsLastSecond;
+}
+
+function getAverageRps() {
+  const now = Date.now();
+  const fiveSecondsAgo = now - 5000;
+  const requestsLastFiveSeconds = metrics.requestTimestamps.filter(ts => ts > fiveSecondsAgo).length;
+  return (requestsLastFiveSeconds / 5).toFixed(1);
+}
+
+function getThroughputStats() {
+  const currentRps = getCurrentRps();
+  const avgRps = getAverageRps();
+  const sessionDuration = Math.floor((Date.now() - metrics.sessionStartTime) / 1000);
+  
+  return {
+    current: currentRps,
+    average: avgRps,
+    peak: metrics.peakRps,
+    total: metrics.totalRequests,
+    sessionSeconds: sessionDuration
+  };
+}
+
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const X_SUPER_PROPERTIES = 'eyJvcyI6IldpbmRvd3MiLCJicm93c2VyIjoiQ2hyb21lIiwiZGV2aWNlIjoiIiwic3lzdGVtX2xvY2FsZSI6ImVuLVVTIiwiYnJvd3Nlcl91c2VyX2FnZW50IjoiTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzEzMS4wLjAuMCBTYWZhcmkvNTM3LjM2IiwiYnJvd3Nlcl92ZXJzaW9uIjoiMTMxLjAuMC4wIiwib3NfdmVyc2lvbiI6IjEwIiwicmVmZXJyZXIiOiJodHRwczovL3d3dy5nb29nbGUuY29tLyIsInJlZmVycmluZ19kb21haW4iOiJ3d3cuZ29vZ2xlLmNvbSIsInJlZmVycmVyX2N1cnJlbnQiOiIiLCJyZWZlcnJpbmdfZG9tYWluX2N1cnJlbnQiOiIiLCJyZWxlYXNlX2NoYW5uZWwiOiJzdGFibGUiLCJjbGllbnRfYnVpbGRfbnVtYmVyIjozNTgyOTUsImNsaWVudF9ldmVudF9zb3VyY2UiOm51bGwsImRlc2lnbl9pZCI6MH0=';
 
@@ -322,6 +375,9 @@ async function createTlsSocket() {
 }
 
 async function sendHttpRequest(method, path, body = null, extraHeaders = {}, closeConnection = false) {
+  // Track this request for throughput metrics
+  recordRequest();
+  
   return new Promise(async (resolve) => {
     const payload = body ? JSON.stringify(body) : '';
 
@@ -737,32 +793,34 @@ async function pollTargetVanity() {
       if (result.shouldContinue) {
         const releaseTimeMs = new Date(RELEASE_DATE).getTime();
         const timeUntilRelease = releaseTimeMs - Date.now();
+        const stats = getThroughputStats();
+        const rpsDisplay = `[${stats.current} req/s | avg: ${stats.average} | peak: ${stats.peak} | total: ${stats.total}]`;
         
         let delay;
         if (timeUntilRelease <= 3000) {
           // Final 3 seconds: BURST MODE (15ms = 66 req/sec) - sustainable burst
           delay = 15;
-          console.log(`💥 BURST MODE - ${Math.round(timeUntilRelease / 1000)}s left!`);
+          console.log(`💥 BURST MODE - ${Math.round(timeUntilRelease / 1000)}s left! ${rpsDisplay}`);
         } else if (timeUntilRelease <= 10000) {
           // 3-10 seconds: MAXIMUM SPEED (30ms = 33 req/sec) - aggressive but safe
           delay = 30;
-          console.log(`🔥 MAXIMUM ATTACK - ${Math.round(timeUntilRelease / 1000)}s left!`);
+          console.log(`🔥 MAXIMUM ATTACK - ${Math.round(timeUntilRelease / 1000)}s left! ${rpsDisplay}`);
         } else if (timeUntilRelease <= 20000) {
           // 10-20 seconds: High speed (50ms = 20 req/sec)
           delay = 50;
-          console.log(`🚀 HIGH SPEED - ${Math.round(timeUntilRelease / 1000)}s until release`);
+          console.log(`🚀 HIGH SPEED - ${Math.round(timeUntilRelease / 1000)}s until release ${rpsDisplay}`);
         } else if (timeUntilRelease <= 40000) {
           // 20-40 seconds: Ramping up (100ms = 10 req/sec)
           delay = 100;
-          console.log(`⚡ RAMPING UP - ${Math.round(timeUntilRelease / 1000)}s until release`);
+          console.log(`⚡ RAMPING UP - ${Math.round(timeUntilRelease / 1000)}s until release ${rpsDisplay}`);
         } else if (timeUntilRelease <= 60000) {
           // 40-60 seconds: Fast polling (200ms = 5 req/sec)
           delay = 200;
-          console.log(`⏩ FAST MODE - ${Math.round(timeUntilRelease / 1000)}s until release`);
+          console.log(`⏩ FAST MODE - ${Math.round(timeUntilRelease / 1000)}s until release ${rpsDisplay}`);
         } else {
           // 60-90 seconds: Warm-up mode (500ms = 2 req/sec)
           delay = 500;
-          console.log(`🔄 WARM-UP - ${Math.round(timeUntilRelease / 1000)}s until release`);
+          console.log(`🔄 WARM-UP - ${Math.round(timeUntilRelease / 1000)}s until release ${rpsDisplay}`);
         }
         
         // If we hit a rate limit, back off momentarily but keep trying
@@ -785,6 +843,7 @@ async function main() {
   console.log('Proxy support: ' + (PROXY_ENABLED ? 'Enabled' : 'Disabled'));
   console.log('Mode: ' + (TARGET_VANITY ? `Targeting vanity "${TARGET_VANITY}"` : 'Monitoring joined servers'));
   console.log('User tokens loaded:', userTokens.length);
+  console.log('Throughput tracking: Enabled (RPS stats will show during polling)');
   
   // Start token rotation
   startTokenRotation();
