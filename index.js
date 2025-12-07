@@ -47,6 +47,7 @@ let currentProxyInfo = {
 // Cached proxy URL to avoid re-fetching on every request
 let cachedProxyUrl = null;
 let proxyUrlFetched = false;
+let brightDataFailed = false; // Track if Bright Data failed so we can fallback
 
 // Throughput tracking
 const metrics = {
@@ -807,6 +808,18 @@ async function authenticateMfa() {
       // Debug: Check if response is HTML (error page)
       if (patchResp.startsWith('<') || patchResp.startsWith('<!')) {
         console.error('ERROR: Received HTML instead of JSON. First 200 chars:', patchResp.substring(0, 200));
+        
+        // Check for Bright Data KYC/endpoint restriction
+        if (patchResp.includes('bad_endpoint') || patchResp.includes('Residential Failed')) {
+          console.error('Bright Data blocked this site (requires KYC verification)');
+          console.log('Falling back to Webshare proxy...');
+          brightDataFailed = true;
+          proxyUrlFetched = false; // Reset to refetch with Webshare
+          cachedProxyUrl = null;
+          await new Promise(r => setTimeout(r, 1000));
+          continue;
+        }
+        
         console.error('This may indicate proxy blocking or Discord returning an error page');
         await new Promise(r => setTimeout(r, 3000));
         continue;
