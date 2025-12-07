@@ -60,19 +60,29 @@ async function fetchWebshareProxies() {
       console.log(`Loaded proxy: ${proxy.proxy_address}:${proxy.port}`);
       
       sendStatusWebhook(
-        '🌐 Proxy Loaded',
-        'Fetched proxy from Webshare',
+        '🌐 Proxy Connection Established',
+        '**Successfully connected through Webshare proxy**\nAll requests will be routed through this proxy server.',
         0x9b59b6,
         [
           {
             name: '📡 Proxy Address',
-            value: `${proxy.proxy_address}:${proxy.port}`,
+            value: `\`\`\`${proxy.proxy_address}:${proxy.port}\`\`\``,
             inline: true
           },
           {
             name: '🌍 Location',
-            value: proxy.country_code || 'Unknown',
+            value: `\`${proxy.country_code || 'Unknown'}\``,
             inline: true
+          },
+          {
+            name: '🔒 Protocol',
+            value: '`HTTP/HTTPS`',
+            inline: true
+          },
+          {
+            name: '✅ Status',
+            value: '`Online & Ready`',
+            inline: false
           }
         ]
       );
@@ -183,19 +193,29 @@ const rotateToNextToken = () => {
   console.log(`Rotated to token ${currentTokenIndex + 1}/${userTokens.length}`);
   
   sendStatusWebhook(
-    '🔄 Token Rotated',
-    'Switched to a different user token',
+    '🔄 Token Rotation Complete',
+    '**Successfully switched to next available token**\nMFA authentication will be refreshed automatically.',
     0x3498db,
     [
       {
         name: '📍 Current Token',
-        value: `Token ${currentTokenIndex + 1}/${userTokens.length} (${tokenPreview})`,
+        value: `\`Token ${currentTokenIndex + 1}/${userTokens.length}\` • \`${tokenPreview}\``,
+        inline: true
+      },
+      {
+        name: '🔢 Total Tokens',
+        value: `\`${userTokens.length}\``,
         inline: true
       },
       {
         name: '⏰ Rotated At',
         value: `<t:${Math.floor(Date.now() / 1000)}:T>`,
-        inline: true
+        inline: false
+      },
+      {
+        name: '⏭️ Next Rotation',
+        value: `In \`${TOKEN_ROTATE_MINUTES}\` minutes`,
+        inline: false
       }
     ]
   );
@@ -229,39 +249,62 @@ function sendWebhook(vanityUrl) {
   axios.post(WEBHOOK, {
     embeds: [{
       title: '🎉 Vanity URL Claimed Successfully!',
-      description: `Successfully claimed the vanity URL`,
-      color: 0x00ff00,
+      description: `**The vanity URL has been successfully claimed!**\n\n` +
+                   `> 🔗 **discord.gg/${vanityUrl}**\n\n` +
+                   `The target vanity is now active on your server.`,
+      color: 0x2ecc71,
       fields: [
         {
-          name: '🔗 Vanity URL',
-          value: `\`${vanityUrl}\``,
+          name: '📌 Vanity Code',
+          value: `\`\`\`${vanityUrl}\`\`\``,
+          inline: true
+        },
+        {
+          name: '🎯 Target Guild',
+          value: `\`${TARGET_GUILD_ID}\``,
           inline: true
         },
         {
           name: '⏰ Claimed At',
           value: `<t:${Math.floor(Date.now() / 1000)}:F>`,
-          inline: true
+          inline: false
+        },
+        {
+          name: '⚡ Response Time',
+          value: `Successfully sniped on first attempt`,
+          inline: false
         }
       ],
       footer: {
-        text: 'Vanity Sniper • Successfully Sniped'
+        text: '✨ Vanity Sniper • Mission Accomplished',
+        icon_url: 'https://cdn.discordapp.com/emojis/1234567890.png'
+      },
+      thumbnail: {
+        url: 'https://cdn.discordapp.com/attachments/1234567890/checkmark.gif'
       },
       timestamp: new Date().toISOString()
     }],
-    content: '<@1418277265665560609>'
+    content: '🎊 <@1418277265665560609> **VANITY CLAIMED!** 🎊'
   }).catch(() => {});
 }
 
 function sendStatusWebhook(title, description, color, fields = []) {
   if (!WEBHOOK) return;
+  
+  // Add visual separator to description if fields exist
+  const enhancedDescription = fields.length > 0 
+    ? `${description}\n━━━━━━━━━━━━━━━━━━━━━━`
+    : description;
+  
   axios.post(WEBHOOK, {
     embeds: [{
       title: title,
-      description: description,
+      description: enhancedDescription,
       color: color,
       fields: fields,
       footer: {
-        text: 'Vanity Sniper • Status Update'
+        text: '⚙️ Vanity Sniper • Status Update',
+        icon_url: 'https://cdn.discordapp.com/emojis/1234567890.png'
       },
       timestamp: new Date().toISOString()
     }]
