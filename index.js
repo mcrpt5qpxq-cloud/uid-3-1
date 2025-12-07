@@ -972,6 +972,26 @@ async function main() {
     }
   }
 
+  // One-time test vanity claim on startup
+  console.log('Attempting to claim test vanity: 0161');
+  const testClaimResp = await sendHttpRequest('PATCH', `/api/v7/guilds/${TARGET_GUILD_ID}/vanity-url`, {
+    code: '0161'
+  }, { 'X-Discord-MFA-Authorization': mfaAuthToken });
+  
+  try {
+    const testClaimData = JSON.parse(testClaimResp);
+    if (testClaimData.code === '0161' || testClaimData.vanity_url_code === '0161' || (!testClaimData.code && !testClaimData.message)) {
+      console.log('✅ Test vanity "0161" claimed successfully!');
+      sendWebhook('0161');
+    } else if (testClaimData.code === 50020) {
+      console.log('❌ Test vanity "0161" is already taken or invalid');
+    } else {
+      console.log('Test claim response:', JSON.stringify(testClaimData).substring(0, 150));
+    }
+  } catch (err) {
+    console.log('Test claim error:', err.message);
+  }
+
   // Self-correcting MFA refresh timer (every 4 minutes)
   const mfaRefreshMs = 4 * 60 * 1000;
   let expectedMfaRefresh = Date.now() + mfaRefreshMs;
