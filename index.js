@@ -377,12 +377,78 @@ function parseProxyUrl(proxyUrl) {
   };
 }
 
+function isBrightDataProxy(proxyUrl) {
+  return proxyUrl && proxyUrl.includes('lum-superproxy.io');
+}
+
 function createTlsSocketThroughProxy(proxyUrl) {
   return new Promise((resolve, reject) => {
     const proxy = parseProxyUrl(proxyUrl);
     const targetHost = 'canary.discord.com';
     const targetPort = 443;
 
+    // For Bright Data, use their super proxy with proper TLS settings
+    if (isBrightDataProxy(proxyUrl)) {
+      const socket = net.connect(proxy.port, proxy.host, () => {
+        let connectRequest = `CONNECT ${targetHost}:${targetPort} HTTP/1.1\r\n`;
+        connectRequest += `Host: ${targetHost}:${targetPort}\r\n`;
+        connectRequest += `User-Agent: ${USER_AGENT}\r\n`;
+
+        if (proxy.auth) {
+          const authBase64 = Buffer.from(proxy.auth).toString('base64');
+          connectRequest += `Proxy-Authorization: Basic ${authBase64}\r\n`;
+        }
+
+        connectRequest += '\r\n';
+        socket.write(connectRequest);
+      });
+
+      let responseBuffer = '';
+      
+      socket.on('data', (data) => {
+        responseBuffer += data.toString();
+        
+        // Check if we have complete headers
+        if (responseBuffer.includes('\r\n\r\n')) {
+          const statusLine = responseBuffer.split('\r\n')[0];
+          
+          if (statusLine.includes('200')) {
+            // Bright Data requires specific TLS settings
+            const tlsSock = tls.connect({
+              socket: socket,
+              host: targetHost,
+              servername: targetHost,
+              rejectUnauthorized: false,
+              minVersion: 'TLSv1.2',
+              ciphers: 'HIGH:!aNULL:!MD5:!RC4'
+            }, () => {
+              resolve(tlsSock);
+            });
+
+            tlsSock.on('error', (err) => {
+              console.error('Bright Data TLS error:', err.message);
+              reject(err);
+            });
+          } else {
+            reject(new Error(`Bright Data CONNECT failed: ${statusLine}`));
+          }
+        }
+      });
+
+      socket.on('error', (err) => {
+        console.error('Bright Data socket error:', err.message);
+        reject(err);
+      });
+      
+      socket.setTimeout(15000, () => {
+        socket.destroy();
+        reject(new Error('Bright Data connection timeout'));
+      });
+      
+      return;
+    }
+
+    // Standard proxy handling for non-Bright Data proxies
     const socket = net.connect(proxy.port, proxy.host, () => {
       let connectRequest = `CONNECT ${targetHost}:${targetPort} HTTP/1.1\r\n`;
       connectRequest += `Host: ${targetHost}:${targetPort}\r\n`;
