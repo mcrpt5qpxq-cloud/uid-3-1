@@ -642,26 +642,36 @@ async function pollTargetVanity() {
         const timeUntilRelease = releaseTimeMs - Date.now();
         
         let delay;
-        if (timeUntilRelease <= 5000) {
-          // Final 5 seconds: ULTRA SPEED (10ms = 100 req/sec) 🚀💥
-          delay = 10;
-          console.log(`💥 ULTRA ATTACK - ${Math.round(timeUntilRelease / 1000)}s left!`);
+        if (timeUntilRelease <= 3000) {
+          // Final 3 seconds: BURST MODE (15ms = 66 req/sec) - sustainable burst
+          delay = 15;
+          console.log(`💥 BURST MODE - ${Math.round(timeUntilRelease / 1000)}s left!`);
         } else if (timeUntilRelease <= 10000) {
-          // 5-10 seconds: MAXIMUM SPEED (25ms = 40 req/sec)
-          delay = 25;
+          // 3-10 seconds: MAXIMUM SPEED (30ms = 33 req/sec) - aggressive but safe
+          delay = 30;
           console.log(`🔥 MAXIMUM ATTACK - ${Math.round(timeUntilRelease / 1000)}s left!`);
-        } else if (timeUntilRelease <= 30000) {
-          // 10-30 seconds: Hyper mode (50ms = 20 req/sec)
+        } else if (timeUntilRelease <= 20000) {
+          // 10-20 seconds: High speed (50ms = 20 req/sec)
           delay = 50;
-          console.log(`🚀 HYPER MODE - ${Math.round(timeUntilRelease / 1000)}s until release`);
+          console.log(`🚀 HIGH SPEED - ${Math.round(timeUntilRelease / 1000)}s until release`);
+        } else if (timeUntilRelease <= 40000) {
+          // 20-40 seconds: Ramping up (100ms = 10 req/sec)
+          delay = 100;
+          console.log(`⚡ RAMPING UP - ${Math.round(timeUntilRelease / 1000)}s until release`);
         } else if (timeUntilRelease <= 60000) {
-          // 30-60 seconds: Fast polling (200ms = 5 req/sec)
+          // 40-60 seconds: Fast polling (200ms = 5 req/sec)
           delay = 200;
-          console.log(`⚡ FAST MODE - ${Math.round(timeUntilRelease / 1000)}s until release`);
+          console.log(`⏩ FAST MODE - ${Math.round(timeUntilRelease / 1000)}s until release`);
         } else {
           // 60-90 seconds: Warm-up mode (500ms = 2 req/sec)
           delay = 500;
           console.log(`🔄 WARM-UP - ${Math.round(timeUntilRelease / 1000)}s until release`);
+        }
+        
+        // If we hit a rate limit, back off momentarily but keep trying
+        if (result.slowDown && timeUntilRelease > 5000) {
+          delay = Math.max(delay * 2, 1000); // Double delay, max 1s
+          console.log(`⚠️ Rate limit detected, slowing to ${delay}ms`);
         }
         
         setTimeout(poll, delay);
