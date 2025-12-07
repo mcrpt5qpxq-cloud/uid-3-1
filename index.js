@@ -31,6 +31,13 @@ let heartbeatTimer = null;
 let tokenRotateTimer = null;
 const vanityMap = new Map();
 
+// Current proxy info for webhook display
+let currentProxyInfo = {
+  address: null,
+  port: null,
+  country: null
+};
+
 // Throughput tracking
 const metrics = {
   requestTimestamps: [],
@@ -111,6 +118,13 @@ async function fetchWebshareProxies() {
       const proxy = response.data.results[0];
       const proxyUrl = `http://${proxy.username}:${proxy.password}@${proxy.proxy_address}:${proxy.port}`;
       console.log(`Loaded proxy: ${proxy.proxy_address}:${proxy.port}`);
+      
+      // Store proxy info for use in other webhooks
+      currentProxyInfo = {
+        address: proxy.proxy_address,
+        port: proxy.port,
+        country: proxy.country_code || 'Unknown'
+      };
       
       sendStatusWebhook(
         '🌐 Proxy Connection Established',
@@ -245,6 +259,10 @@ const rotateToNextToken = () => {
   const tokenPreview = USER_TOKEN.length > 4 ? `...${USER_TOKEN.slice(-4)}` : '****';
   console.log(`Rotated to token ${currentTokenIndex + 1}/${userTokens.length}`);
   
+  const proxyDisplay = currentProxyInfo.address 
+    ? `${currentProxyInfo.country} (${currentProxyInfo.address}:${currentProxyInfo.port})`
+    : 'Direct Connection (No Proxy)';
+  
   sendStatusWebhook(
     '🔄 Token Rotation Complete',
     '**Successfully switched to next available token**\nMFA authentication will be refreshed automatically.',
@@ -259,6 +277,11 @@ const rotateToNextToken = () => {
         name: '🔢 Total Tokens',
         value: `\`${userTokens.length}\``,
         inline: true
+      },
+      {
+        name: '🌍 Proxy Location',
+        value: `\`${proxyDisplay}\``,
+        inline: false
       },
       {
         name: '⏰ Rotated At',
