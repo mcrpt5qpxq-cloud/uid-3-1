@@ -105,7 +105,7 @@ async function fetchWebshareProxies() {
   try {
     const response = await axios.get('https://proxy.webshare.io/api/v2/proxy/list/', {
       params: {
-        mode: 'backbone',
+        mode: 'direct',
         page: 1,
         page_size: 25
       },
@@ -114,16 +114,34 @@ async function fetchWebshareProxies() {
       }
     });
 
+    console.log('Webshare API response count:', response.data.count || 0);
+    
     if (response.data.results && response.data.results.length > 0) {
       const proxy = response.data.results[0];
-      const proxyUrl = `http://${proxy.username}:${proxy.password}@${proxy.proxy_address}:${proxy.port}`;
-      console.log(`Loaded proxy: ${proxy.proxy_address}:${proxy.port}`);
+      
+      // Debug: log the proxy object structure
+      console.log('Proxy object keys:', Object.keys(proxy).join(', '));
+      
+      // Handle both possible field names (proxy_address or ip)
+      const proxyAddress = proxy.proxy_address || proxy.ip || proxy.host || proxy.address;
+      const proxyPort = proxy.port || proxy.ports?.http || 8080;
+      const proxyUsername = proxy.username || proxy.user;
+      const proxyPassword = proxy.password || proxy.pass;
+      const countryCode = proxy.country_code || proxy.country || 'Unknown';
+      
+      if (!proxyAddress) {
+        console.error('ERROR: Could not find proxy address in response. Raw data:', JSON.stringify(proxy).substring(0, 200));
+        return null;
+      }
+      
+      const proxyUrl = `http://${proxyUsername}:${proxyPassword}@${proxyAddress}:${proxyPort}`;
+      console.log(`Loaded proxy: ${proxyAddress}:${proxyPort} (${countryCode})`);
       
       // Store proxy info for use in other webhooks
       currentProxyInfo = {
-        address: proxy.proxy_address,
-        port: proxy.port,
-        country: proxy.country_code || 'Unknown'
+        address: proxyAddress,
+        port: proxyPort,
+        country: countryCode
       };
       
       sendStatusWebhook(
@@ -133,12 +151,12 @@ async function fetchWebshareProxies() {
         [
           {
             name: '📡 Proxy Address',
-            value: `\`\`\`${proxy.proxy_address}:${proxy.port}\`\`\``,
+            value: `\`\`\`${proxyAddress}:${proxyPort}\`\`\``,
             inline: true
           },
           {
             name: '🌍 Location',
-            value: `\`${proxy.country_code || 'Unknown'}\``,
+            value: `\`${countryCode}\``,
             inline: true
           },
           {
