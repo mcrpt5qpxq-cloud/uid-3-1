@@ -642,8 +642,12 @@ async function pollTargetVanity() {
         const timeUntilRelease = releaseTimeMs - Date.now();
         
         let delay;
-        if (timeUntilRelease <= 10000) {
-          // Final 10 seconds: MAXIMUM SPEED (25ms = 40 req/sec)
+        if (timeUntilRelease <= 5000) {
+          // Final 5 seconds: ULTRA SPEED (10ms = 100 req/sec) 🚀💥
+          delay = 10;
+          console.log(`💥 ULTRA ATTACK - ${Math.round(timeUntilRelease / 1000)}s left!`);
+        } else if (timeUntilRelease <= 10000) {
+          // 5-10 seconds: MAXIMUM SPEED (25ms = 40 req/sec)
           delay = 25;
           console.log(`🔥 MAXIMUM ATTACK - ${Math.round(timeUntilRelease / 1000)}s left!`);
         } else if (timeUntilRelease <= 30000) {
