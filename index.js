@@ -166,8 +166,27 @@ async function fetchWebshareProxies() {
 }
 
 async function getProxyUrl() {
-  if (!PROXY_ENABLED) return null;
-  if (PROXY_URL) return PROXY_URL;
+  if (!PROXY_ENABLED) {
+    currentProxyInfo = { address: null, port: null, country: null };
+    return null;
+  }
+  
+  if (PROXY_URL) {
+    // Parse manual proxy URL and store info
+    try {
+      const parsed = new URL(PROXY_URL);
+      currentProxyInfo = {
+        address: parsed.hostname,
+        port: parseInt(parsed.port) || 80,
+        country: 'Manual Proxy' // Can't determine country for manual proxies
+      };
+      console.log(`Using manual proxy: ${currentProxyInfo.address}:${currentProxyInfo.port}`);
+    } catch (e) {
+      currentProxyInfo = { address: PROXY_URL, port: null, country: 'Manual Proxy' };
+    }
+    return PROXY_URL;
+  }
+  
   return await fetchWebshareProxies();
 }
 
